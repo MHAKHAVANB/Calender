@@ -6,200 +6,213 @@
   <title>تقویم هوشمند</title>
   <style>
     body { font-family: Arial, sans-serif; direction: rtl; padding: 20px; }
-    .nav { margin: 10px 0; }
+    .nav { margin: 15px 0; text-align: center; }
     button { padding: 5px 10px; margin: 0 5px; }
-    .date-picker { margin: 20px 0; padding: 10px; border: 1px solid #ddd; }
+    .event-box { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+    #bottomDatePicker { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 15px; }
     select, input { padding: 5px; margin: 0 5px; }
-    .event { margin: 10px 0; padding: 10px; background: #f0f0f0; }
-    .category-title { font-weight: bold; margin-top: 10px; }
   </style>
 </head>
 <body>
   <h1>تقویم مناسبت‌ها</h1>
   
-  <!-- نوار ناوبری -->
+  <!-- نمایش تاریخ فعلی به سه تقویم -->
+  <div id="today"></div>
+  
+  <!-- نمایش رویدادها در قالب جدول -->
+  <div id="events"></div>
+  
+  <!-- نوار ناوبری تاریخ -->
   <div class="nav">
-    <button onclick="changeDate(-7)">هفته قبل</button>
-    <button onclick="changeDate(-1)">روز قبل</button>
-    <button onclick="changeDate(1)">روز بعد</button>
-    <button onclick="changeDate(7)">هفته بعد</button>
+    <button onclick="changeMonth(-1)">ماه قبل</button>
+    <button onclick="changeWeek(-1)">هفته قبل</button>
+    <button onclick="changeDay(-1)">روز قبل</button>
+    <button onclick="changeDay(1)">روز بعد</button>
+    <button onclick="changeWeek(1)">هفته بعد</button>
+    <button onclick="changeMonth(1)">ماه بعد</button>
   </div>
-
-  <!-- فرم جستجوی دستی تاریخ -->
-  <div class="date-picker">
-    <h3>جستجوی تاریخ:</h3>
-    <select id="calendarType" onchange="updateDateInputs()">
+  
+  <!-- فرم انتخاب تاریخ خاص در پایین صفحه -->
+  <div id="bottomDatePicker">
+    <h3>انتخاب تاریخ خاص:</h3>
+    <select id="bottomCalendarType" onchange="updateBottomDateInputs()">
       <option value="shamsi">شمسی</option>
       <option value="miladi">میلادی</option>
       <option value="qamari">قمری</option>
     </select>
-    
-    <span id="yearInput">
-      <input type="number" id="year" placeholder="سال">
+    <span id="bottomYearInput">
+      <input type="number" id="bottomYear" placeholder="سال">
     </span>
-    
-    <select id="month" onchange="updateDays()"></select>
-    <select id="day"></select>
-    
-    <button onclick="searchDate()">جستجو</button>
+    <select id="bottomMonth" onchange="updateBottomDays()"></select>
+    <select id="bottomDay"></select>
+    <button onclick="searchBottomDate()">برو به تاریخ</button>
+    <div id="todayButtonDiv"></div>
   </div>
-
-  <!-- نمایش تاریخ انتخابی -->
-  <div id="today"></div>
-  <!-- نمایش رویدادها -->
-  <div id="events"></div>
 
   <!-- کتابخانه‌های تبدیل تاریخ -->
   <script src="https://cdn.jsdelivr.net/npm/jalali-date@1.1.0/dist/jalali-date.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hijri-date@2.0.0/dist/hijri-date.min.js"></script>
-
+  
   <script>
-    // آرایه فایل‌های رویداد؛ در صورت نیاز می‌توانید فایل‌های دیگری اضافه کنید.
+    // تعریف آرایه دیتابیس‌های رویداد به صورت شیء با اطلاعات مورد نیاز
     const eventFiles = [
-      "shamsi_melli.json",
-      "qamari_dini.json",
-      "miladi_jahani.json"
-      // مثال: "shamsi_danesh.json"
+      { calType: "shamsi", category: "ملی", file: "shamsi_melli.json" },
+      { calType: "qamari", category: "مذهبی", file: "qamari_dini.json" },
+      { calType: "miladi", category: "جهانی", file: "miladi_jahani.json" }
     ];
-
-    // شیء برای ذخیره‌سازی رویدادها بر اساس تقویم
-    const eventsDB = {};
-
-    // تاریخ جاری (ابتدایی) به صورت میلادی
+    // آرایه جهت ذخیره رویدادهای هر دیتابیس
+    const loadedEvents = [];
+    
+    // تاریخ جاری سایت (برای نمایش و ناوبری)
     let currentDate = new Date();
-
-    // بارگذاری فایل‌های رویداد به‌صورت داینامیک
+    // تاریخ واقعی امروز جهت مقایسه در بخش «برو به امروز»
+    const todayDate = new Date();
+    
+    // بارگذاری فایل‌های رویداد از دیتابیس‌ها
     async function loadEvents() {
-      for (const fileName of eventFiles) {
+      for (const ev of eventFiles) {
         try {
-          const response = await fetch(fileName);
+          const response = await fetch(ev.file);
           const data = await response.json();
-          // استخراج نوع تقویم و دسته از نام فایل (مثلاً "shamsi_melli.json")
-          const parts = fileName.split('_');
-          const calType = parts[0]; // مثل "shamsi"
-          const categoryWithExt = parts[1];
-          const category = categoryWithExt.split('.')[0]; // مثل "melli"
-
-          if (!eventsDB[calType]) {
-            eventsDB[calType] = {};
-          }
-          eventsDB[calType][category] = data[category];
+          // فرض بر این است که ساختار JSON به صورت { "category": { "MM-DD": [رویدادها] } } می‌باشد.
+          loadedEvents.push({
+            calType: ev.calType,
+            category: ev.category,
+            data: data[ev.category]
+          });
         } catch (error) {
-          console.error("خطا در بارگذاری فایل:", fileName, error);
-        }
-      }
-    }
-
-    // هنگام بارگذاری صفحه ابتدا رویدادها را بارگذاری کرده، فرم تاریخ به‌روز و تقویم نمایش داده می‌شود
-    window.onload = async () => {
-      await loadEvents();
-      updateDateInputs();
-      updateCalendar();
-    };
-
-    // به‌روز‌رسانی نمایش تاریخ انتخاب‌شده به سه تقویم
-    function updateCalendar() {
-      const jalali = new JalaliDate(currentDate);
-      const hijri = new HijriDate(currentDate);
-      document.getElementById('today').innerHTML = `
-        <div class="event">
-          <h3>تاریخ انتخابی:</h3>
-          شمسی: ${jalali.getDate()} ${jalali.getMonthName()} ${jalali.getFullYear()}<br>
-          میلادی: ${currentDate.toLocaleDateString('en-US')}<br>
-          قمری: ${hijri.getDate()} ${hijri.getMonthName()} ${hijri.getFullYear()}
-        </div>
-      `;
-
-      // نمایش رویدادها از فایل‌های بارگذاری شده
-      const eventsDiv = document.getElementById('events');
-      eventsDiv.innerHTML = '';
-
-      for (const calType in eventsDB) {
-        let dateObj;
-        if (calType === "shamsi") {
-          dateObj = new JalaliDate(currentDate);
-        } else if (calType === "qamari") {
-          dateObj = new HijriDate(currentDate);
-        } else if (calType === "miladi") {
-          dateObj = currentDate;
-        } else {
-          continue;
-        }
-        displayEventsForCalendar(dateObj, eventsDB[calType], calType);
-      }
-    }
-
-    // نمایش رویدادها برای یک تقویم خاص
-    function displayEventsForCalendar(dateObj, eventsData, calendarType) {
-      let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-      let day = dateObj.getDate().toString().padStart(2, '0');
-      const key = `${month}-${day}`;
-
-      for (const category in eventsData) {
-        if (eventsData[category] && eventsData[category][key]) {
-          document.getElementById('events').innerHTML += `
-            <div class="category-title">${category} (${calendarType})</div>
-          `;
-          eventsData[category][key].forEach(event => {
-            document.getElementById('events').innerHTML += `
-              <div class="event">📅: ${event}</div>
-            `;
+          console.error("خطا در بارگذاری فایل:", ev.file, error);
+          // در صورت خطا، یک شیء خالی به آرایه اضافه می‌کنیم
+          loadedEvents.push({
+            calType: ev.calType,
+            category: ev.category,
+            data: {}
           });
         }
       }
     }
-
-    // تغییر تاریخ با دکمه‌های ناوبری
-    function changeDate(offset) {
+    
+    // به‌روز رسانی نمایش تاریخ در بالای صفحه
+    function updateTodayDisplay() {
+      const jDate = new JalaliDate(currentDate);
+      const hDate = new HijriDate(currentDate);
+      document.getElementById('today').innerHTML = `
+        <div class="event-box">
+          <h3>تاریخ انتخابی:</h3>
+          شمسی: ${jDate.getDate()} ${jDate.getMonthName()} ${jDate.getFullYear()}<br>
+          میلادی: ${currentDate.toLocaleDateString('en-US')}<br>
+          قمری: ${hDate.getDate()} ${hDate.getMonthName()} ${hDate.getFullYear()}
+        </div>
+      `;
+    }
+    
+    // به‌روز رسانی جدول رویدادها
+    function updateEventsTable() {
+      let tableHTML = '<table><tr>';
+      // ردیف عنوان ستون‌ها
+      for (const ev of loadedEvents) {
+        tableHTML += `<th>${ev.category} (${ev.calType})</th>`;
+      }
+      tableHTML += '</tr><tr>';
+      // ردیف محتوا: برای هر دیتابیس، رویدادهای تاریخ جاری را بررسی می‌کنیم
+      for (const ev of loadedEvents) {
+        let dateObj;
+        if(ev.calType === 'shamsi'){
+          dateObj = new JalaliDate(currentDate);
+        } else if(ev.calType === 'qamari'){
+          dateObj = new HijriDate(currentDate);
+        } else if(ev.calType === 'miladi'){
+          dateObj = currentDate;
+        }
+        // تبدیل ماه و روز به رشته دو رقمی
+        let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+        let day = dateObj.getDate().toString().padStart(2, '0');
+        const key = `${month}-${day}`;
+        const eventsList = (ev.data && ev.data[key]) ? ev.data[key] : ["ندارد"];
+        let cellHTML = eventsList.map(item => `<div>📅: ${item}</div>`).join('');
+        tableHTML += `<td>${cellHTML}</td>`;
+      }
+      tableHTML += '</tr></table>';
+      document.getElementById('events').innerHTML = tableHTML;
+    }
+    
+    // به‌روز رسانی کلی صفحه (تاریخ و رویدادها و فرم پایین)
+    function updateCalendar() {
+      updateTodayDisplay();
+      updateEventsTable();
+      renderBottomDatePicker();
+    }
+    
+    // توابع ناوبری تاریخ
+    function changeDay(offset) {
       currentDate.setDate(currentDate.getDate() + offset);
-      updateDateInputs(); // فرم جستجو هم به‌روز شود
       updateCalendar();
     }
-
-    // به‌روز‌رسانی فرم انتخاب تاریخ با توجه به نوع تقویم انتخابی
-    function updateDateInputs() {
-      const type = document.getElementById('calendarType').value;
+    function changeWeek(offset) {
+      currentDate.setDate(currentDate.getDate() + (offset * 7));
+      updateCalendar();
+    }
+    function changeMonth(offset) {
+      currentDate.setMonth(currentDate.getMonth() + offset);
+      updateCalendar();
+    }
+    
+    // === بخش فرم انتخاب تاریخ در پایین صفحه ===
+    function renderBottomDatePicker() {
+      // تنظیم اولیه فرم انتخاب تاریخ پایین
+      updateBottomDateInputs();
+      // نمایش دکمه «برو به امروز» در صورت تغییر تاریخ
+      const todayButtonDiv = document.getElementById('todayButtonDiv');
+      if (currentDate.toDateString() !== todayDate.toDateString()) {
+        todayButtonDiv.innerHTML = `<button onclick="goToToday()">برو به امروز</button>`;
+      } else {
+        todayButtonDiv.innerHTML = '';
+      }
+    }
+    
+    // به‌روز رسانی مقادیر فرم پایین بر اساس تاریخ جاری
+    function updateBottomDateInputs() {
+      const type = document.getElementById('bottomCalendarType').value;
       const months = {
         shamsi: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'],
         qamari: ['محرم', 'صفر', 'ربیع الاول', 'ربیع الثانی', 'جمادی الاول', 'جمادی الثانی', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذیقعده', 'ذیحجه'],
         miladi: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
       };
-
-      const monthSelect = document.getElementById('month');
-      const yearInput = document.getElementById('year');
-      monthSelect.innerHTML = '';
-
-      // تنظیم مقدار سال و ماه پیش‌فرض بر اساس تاریخ جاری
+      const bottomYearInput = document.getElementById('bottomYear');
+      const bottomMonthSelect = document.getElementById('bottomMonth');
+      bottomMonthSelect.innerHTML = '';
+      
       if (type === 'shamsi') {
         const jDate = new JalaliDate(currentDate);
-        yearInput.value = jDate.getFullYear();
-        monthSelect.innerHTML = months.shamsi.map((m, i) => `<option value="${i + 1}" ${i === jDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+        bottomYearInput.value = jDate.getFullYear();
+        bottomMonthSelect.innerHTML = months.shamsi.map((m, i) => `<option value="${i + 1}" ${i === jDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
       } else if (type === 'qamari') {
         const hDate = new HijriDate(currentDate);
-        yearInput.value = hDate.getFullYear();
-        monthSelect.innerHTML = months.qamari.map((m, i) => `<option value="${i + 1}" ${i === hDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+        bottomYearInput.value = hDate.getFullYear();
+        bottomMonthSelect.innerHTML = months.qamari.map((m, i) => `<option value="${i + 1}" ${i === hDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
       } else { // miladi
-        yearInput.value = currentDate.getFullYear();
-        monthSelect.innerHTML = months.miladi.map((m, i) => `<option value="${i + 1}" ${i === currentDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+        bottomYearInput.value = currentDate.getFullYear();
+        bottomMonthSelect.innerHTML = months.miladi.map((m, i) => `<option value="${i + 1}" ${i === currentDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
       }
-      updateDays();
+      updateBottomDays();
     }
-
-    // به‌روز‌رسانی تعداد روزهای موجود در ماه بر اساس سال و تقویم انتخابی
-    function updateDays() {
-      const type = document.getElementById('calendarType').value;
-      const year = parseInt(document.getElementById('year').value) || 1;
-      const month = parseInt(document.getElementById('month').value);
-      const daySelect = document.getElementById('day');
-
+    
+    function updateBottomDays() {
+      const type = document.getElementById('bottomCalendarType').value;
+      const year = parseInt(document.getElementById('bottomYear').value) || 1;
+      const month = parseInt(document.getElementById('bottomMonth').value);
+      const bottomDaySelect = document.getElementById('bottomDay');
+      
       let daysInMonth;
       try {
         if (type === 'shamsi') {
-          const jalali = new JalaliDate(year, month - 1, 1);
-          daysInMonth = jalali.daysInMonth();
+          const jDate = new JalaliDate(year, month - 1, 1);
+          daysInMonth = jDate.daysInMonth();
         } else if (type === 'qamari') {
-          const hijri = new HijriDate(year, month - 1, 1);
-          daysInMonth = hijri.daysInMonth();
+          const hDate = new HijriDate(year, month - 1, 1);
+          daysInMonth = hDate.daysInMonth();
         } else {
           const miladi = new Date(year, month, 0);
           daysInMonth = miladi.getDate();
@@ -208,42 +221,56 @@
         daysInMonth = 30;
         console.error("خطا در محاسبه روزها:", error);
       }
-
-      daySelect.innerHTML = '';
+      
+      bottomDaySelect.innerHTML = '';
       for (let i = 1; i <= daysInMonth; i++) {
-        daySelect.innerHTML += `<option value="${i}">${i}</option>`;
+        bottomDaySelect.innerHTML += `<option value="${i}">${i}</option>`;
       }
-
-      // تنظیم روز پیش‌فرض بر اساس تاریخ جاری
+      
+      // تنظیم روز پیش‌فرض مطابق تاریخ جاری
+      let currentDay;
       if (type === 'shamsi') {
         const jDate = new JalaliDate(currentDate);
-        daySelect.value = jDate.getDate();
+        currentDay = jDate.getDate();
       } else if (type === 'qamari') {
         const hDate = new HijriDate(currentDate);
-        daySelect.value = hDate.getDate();
+        currentDay = hDate.getDate();
       } else {
-        daySelect.value = currentDate.getDate();
+        currentDay = currentDate.getDate();
       }
+      bottomDaySelect.value = currentDay;
     }
-
-    // جستجوی دستی تاریخ
-    function searchDate() {
-      const type = document.getElementById('calendarType').value;
-      const year = parseInt(document.getElementById('year').value);
-      const month = parseInt(document.getElementById('month').value);
-      const day = parseInt(document.getElementById('day').value);
-
+    
+    // جستجوی تاریخ از فرم پایین
+    function searchBottomDate() {
+      const type = document.getElementById('bottomCalendarType').value;
+      const year = parseInt(document.getElementById('bottomYear').value);
+      const month = parseInt(document.getElementById('bottomMonth').value);
+      const day = parseInt(document.getElementById('bottomDay').value);
+      
       if (type === 'shamsi') {
-        const jalaliDate = new JalaliDate(year, month - 1, day);
-        currentDate = jalaliDate.toGregorian();
+        const jDate = new JalaliDate(year, month - 1, day);
+        currentDate = jDate.toGregorian();
       } else if (type === 'qamari') {
-        const hijriDate = new HijriDate(year, month - 1, day);
-        currentDate = hijriDate.toGregorian();
+        const hDate = new HijriDate(year, month - 1, day);
+        currentDate = hDate.toGregorian();
       } else {
         currentDate = new Date(year, month - 1, day);
       }
       updateCalendar();
     }
+    
+    // دکمه «برو به امروز» در فرم پایین
+    function goToToday() {
+      currentDate = new Date();
+      updateCalendar();
+    }
+    
+    // هنگام بارگذاری صفحه: ابتدا رویدادها بارگذاری و سپس تقویم به‌روز می‌شود.
+    window.onload = async () => {
+      await loadEvents();
+      updateCalendar();
+    };
   </script>
 </body>
 </html>
