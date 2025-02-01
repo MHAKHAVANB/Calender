@@ -54,40 +54,35 @@
   <script src="https://cdn.jsdelivr.net/npm/hijri-date@2.0.0/dist/hijri-date.min.js"></script>
 
   <script>
-    // آرایه فایل‌های رویداد؛ شما می‌توانید فایل‌های دیگری به این آرایه اضافه کنید.
+    // آرایه فایل‌های رویداد؛ در صورت نیاز می‌توانید فایل‌های دیگری اضافه کنید.
     const eventFiles = [
       "shamsi_melli.json",
       "qamari_dini.json",
       "miladi_jahani.json"
-      // برای افزودن دسته جدید مثلاً دانش‌آموزی:
-      // "shamsi_danesh.json"
+      // مثال: "shamsi_danesh.json"
     ];
 
-    // شیء eventsDB جهت ذخیره‌سازی رویدادها بر اساس تقویم
+    // شیء برای ذخیره‌سازی رویدادها بر اساس تقویم
     const eventsDB = {};
 
     // تاریخ جاری (ابتدایی) به صورت میلادی
     let currentDate = new Date();
 
-    // تابع بارگذاری فایل‌های رویداد به صورت داینامیک
+    // بارگذاری فایل‌های رویداد به‌صورت داینامیک
     async function loadEvents() {
       for (const fileName of eventFiles) {
         try {
           const response = await fetch(fileName);
           const data = await response.json();
-          // استخراج نوع تقویم و دسته از نام فایل:
-          // نام فایل به صورت "نوع_دسته.json" است.
+          // استخراج نوع تقویم و دسته از نام فایل (مثلاً "shamsi_melli.json")
           const parts = fileName.split('_');
-          const calType = parts[0]; // مثلاً "shamsi"
-          // قسمت دوم نام فایل ممکن است شامل پسوند .json باشد؛ جدا می‌کنیم:
+          const calType = parts[0]; // مثل "shamsi"
           const categoryWithExt = parts[1];
-          const category = categoryWithExt.split('.')[0]; // مثلاً "melli"
+          const category = categoryWithExt.split('.')[0]; // مثل "melli"
 
-          // اگر برای این تقویم قبلاً کلید وجود نداشته باشد، ایجاد می‌کنیم
           if (!eventsDB[calType]) {
             eventsDB[calType] = {};
           }
-          // قرار دادن داده‌ها تحت کلید دسته
           eventsDB[calType][category] = data[category];
         } catch (error) {
           console.error("خطا در بارگذاری فایل:", fileName, error);
@@ -95,14 +90,14 @@
       }
     }
 
-    // هنگام بارگذاری صفحه ابتدا رویدادها را بارگذاری کرده و سپس تقویم به‌روز می‌شود
+    // هنگام بارگذاری صفحه ابتدا رویدادها را بارگذاری کرده، فرم تاریخ به‌روز و تقویم نمایش داده می‌شود
     window.onload = async () => {
       await loadEvents();
       updateDateInputs();
       updateCalendar();
     };
 
-    // تابع به‌روز رسانی تقویم: نمایش تاریخ انتخابی به سه تقویم
+    // به‌روز‌رسانی نمایش تاریخ انتخاب‌شده به سه تقویم
     function updateCalendar() {
       const jalali = new JalaliDate(currentDate);
       const hijri = new HijriDate(currentDate);
@@ -119,9 +114,7 @@
       const eventsDiv = document.getElementById('events');
       eventsDiv.innerHTML = '';
 
-      // برای هر تقویم بارگذاری شده در eventsDB، رویدادهای مربوط به تاریخ جاری را نمایش می‌دهیم
       for (const calType in eventsDB) {
-        // انتخاب شیء تاریخ مربوط به تقویم
         let dateObj;
         if (calType === "shamsi") {
           dateObj = new JalaliDate(currentDate);
@@ -136,14 +129,14 @@
       }
     }
 
-    // تابع نمایش رویدادها برای یک تقویم خاص
+    // نمایش رویدادها برای یک تقویم خاص
     function displayEventsForCalendar(dateObj, eventsData, calendarType) {
       let month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
       let day = dateObj.getDate().toString().padStart(2, '0');
       const key = `${month}-${day}`;
 
       for (const category in eventsData) {
-        if (eventsData[category][key]) {
+        if (eventsData[category] && eventsData[category][key]) {
           document.getElementById('events').innerHTML += `
             <div class="category-title">${category} (${calendarType})</div>
           `;
@@ -159,10 +152,11 @@
     // تغییر تاریخ با دکمه‌های ناوبری
     function changeDate(offset) {
       currentDate.setDate(currentDate.getDate() + offset);
+      updateDateInputs(); // فرم جستجو هم به‌روز شود
       updateCalendar();
     }
 
-    // بخش جستجوی دستی تاریخ
+    // به‌روز‌رسانی فرم انتخاب تاریخ با توجه به نوع تقویم انتخابی
     function updateDateInputs() {
       const type = document.getElementById('calendarType').value;
       const months = {
@@ -172,14 +166,26 @@
       };
 
       const monthSelect = document.getElementById('month');
+      const yearInput = document.getElementById('year');
       monthSelect.innerHTML = '';
-      months[type].forEach((month, index) => {
-        monthSelect.innerHTML += `<option value="${index + 1}">${month}</option>`;
-      });
+
+      // تنظیم مقدار سال و ماه پیش‌فرض بر اساس تاریخ جاری
+      if (type === 'shamsi') {
+        const jDate = new JalaliDate(currentDate);
+        yearInput.value = jDate.getFullYear();
+        monthSelect.innerHTML = months.shamsi.map((m, i) => `<option value="${i + 1}" ${i === jDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+      } else if (type === 'qamari') {
+        const hDate = new HijriDate(currentDate);
+        yearInput.value = hDate.getFullYear();
+        monthSelect.innerHTML = months.qamari.map((m, i) => `<option value="${i + 1}" ${i === hDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+      } else { // miladi
+        yearInput.value = currentDate.getFullYear();
+        monthSelect.innerHTML = months.miladi.map((m, i) => `<option value="${i + 1}" ${i === currentDate.getMonth() ? 'selected' : ''}>${m}</option>`).join('');
+      }
       updateDays();
     }
 
-    // به‌روز رسانی تعداد روزهای موجود در ماه بر اساس سال و تقویم
+    // به‌روز‌رسانی تعداد روزهای موجود در ماه بر اساس سال و تقویم انتخابی
     function updateDays() {
       const type = document.getElementById('calendarType').value;
       const year = parseInt(document.getElementById('year').value) || 1;
@@ -206,6 +212,17 @@
       daySelect.innerHTML = '';
       for (let i = 1; i <= daysInMonth; i++) {
         daySelect.innerHTML += `<option value="${i}">${i}</option>`;
+      }
+
+      // تنظیم روز پیش‌فرض بر اساس تاریخ جاری
+      if (type === 'shamsi') {
+        const jDate = new JalaliDate(currentDate);
+        daySelect.value = jDate.getDate();
+      } else if (type === 'qamari') {
+        const hDate = new HijriDate(currentDate);
+        daySelect.value = hDate.getDate();
+      } else {
+        daySelect.value = currentDate.getDate();
       }
     }
 
